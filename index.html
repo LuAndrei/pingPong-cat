@@ -1,0 +1,957 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Night Cat Productions - Ping Pong Sala de Juegos</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'VT323', monospace;
+            user-select: none;
+            -webkit-user-select: none;
+            background-color: #141218;
+            color: #f8fafc;
+            overflow: hidden;
+            touch-action: none;
+        }
+        .font-pixel {
+            font-family: 'Press Start 2P', monospace;
+        }
+        /* Efecto Scanlines CRT sutil */
+        .crt-overlay {
+            background: linear-gradient(
+                rgba(18, 16, 16, 0) 50%, 
+                rgba(0, 0, 0, 0.14) 50%
+            );
+            background-size: 100% 4px;
+            pointer-events: none;
+        }
+        canvas {
+            image-rendering: pixelated;
+        }
+        .pixel-box {
+            box-shadow: 0 4px 0 #0f172a, 0 -4px 0 #0f172a, 4px 0 0 #0f172a, -4px 0 0 #0f172a;
+        }
+        @keyframes floatBubble {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-4px); }
+        }
+        .animate-bubble {
+            animation: floatBubble 1.2s infinite ease-in-out;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col items-center justify-between p-2 sm:p-3 bg-stone-900">
+
+    <!-- MARCADOR SUPERIOR ESTILO NIGHT CAT PRODUCTIONS -->
+    <header class="w-full max-w-4xl bg-[#f3ead8] text-stone-900 border-4 border-stone-800 rounded-lg px-3 py-2 flex flex-wrap items-center justify-between gap-2 shadow-lg z-20">
+        <!-- Jugador 1 -->
+        <div class="flex items-center gap-2 sm:gap-3">
+            <div class="w-9 h-9 bg-amber-600 border-2 border-stone-800 rounded flex items-center justify-center text-xl shadow-inner">🐱</div>
+            <div>
+                <div class="font-pixel text-[9px] sm:text-[11px] text-stone-800">CODE CAT (TÚ)</div>
+                <div class="font-pixel text-sm sm:text-base text-red-600 font-bold" id="score-p1">0</div>
+            </div>
+        </div>
+
+        <!-- Centro: Título y Regla -->
+        <div class="text-center order-first sm:order-none w-full sm:w-auto border-b-2 sm:border-b-0 border-stone-300 pb-1 sm:pb-0">
+            <div class="font-pixel text-[10px] sm:text-xs text-stone-900 tracking-wider">NIGHT CAT PING-PONG</div>
+            <div class="text-xs sm:text-sm text-stone-600 font-bold">¡El primero en llegar a 7 puntos gana!</div>
+        </div>
+
+        <!-- Rival IA y Controles -->
+        <div class="flex items-center gap-2 sm:gap-3">
+            <div class="text-right">
+                <div class="font-pixel text-[9px] sm:text-[11px] text-stone-800" id="ai-name-hud">MILO</div>
+                <div class="font-pixel text-sm sm:text-base text-blue-600 font-bold" id="score-p2">0</div>
+            </div>
+            <div class="w-9 h-9 bg-stone-300 border-2 border-stone-800 rounded flex items-center justify-center text-xl shadow-inner" id="ai-icon-hud">🐈</div>
+            <button onclick="toggleAudio()" id="btn-sfx" class="ml-1 px-2 py-1.5 bg-stone-800 hover:bg-stone-700 text-amber-300 rounded font-pixel text-[9px] border-2 border-stone-950" title="Sonido">
+                🔊
+            </button>
+        </div>
+    </header>
+
+    <!-- ÁREA CENTRAL DEL JUEGO (CANVAS + MENÚS SUPERPUESTOS) -->
+    <main class="relative w-full max-w-4xl flex-1 my-2 bg-[#ebe1ce] border-4 border-stone-800 rounded-xl overflow-hidden shadow-2xl flex items-center justify-center">
+        <div class="absolute inset-0 crt-overlay z-10"></div>
+
+        <!-- CANVAS DE PING PONG -->
+        <canvas id="pongCanvas" class="w-full h-full block cursor-none"></canvas>
+
+        <!-- PANTALLA 1: SELECCIÓN DE COMPAÑERO Y PALETA -->
+        <div id="screen-select" class="absolute inset-0 bg-stone-950/85 backdrop-blur-sm z-30 flex flex-col items-center justify-center p-4 overflow-y-auto">
+            <div class="bg-[#f3ead8] text-stone-900 border-4 border-stone-800 rounded-xl p-4 sm:p-6 max-w-xl w-full shadow-2xl space-y-4">
+                <div class="text-center border-b-2 border-stone-400 pb-2">
+                    <span class="bg-amber-500 text-stone-950 font-pixel text-[9px] px-2 py-0.5 rounded border border-stone-800">SALA DE JUEGOS</span>
+                    <h2 class="font-pixel text-sm sm:text-base text-stone-900 mt-2">ELIGE TU RIVAL DE OFICINA</h2>
+                </div>
+
+                <!-- Tarjetas de Compañeros -->
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    <!-- Milo -->
+                    <button onclick="selectOpponent('milo')" id="card-milo" class="opp-card border-4 border-amber-600 bg-amber-100 rounded-lg p-2.5 text-center transition transform hover:scale-105 flex flex-col items-center">
+                        <div class="text-3xl mb-1">🐈</div>
+                        <div class="font-pixel text-[10px] text-stone-900">MILO</div>
+                        <span class="text-[11px] bg-emerald-600 text-white px-2 py-0.2 rounded font-bold mt-1">FÁCIL</span>
+                        <p class="text-xs text-stone-600 mt-1 leading-tight">Gato Calicó con chaleco. Juega relajado.</p>
+                    </button>
+
+                    <!-- Luna -->
+                    <button onclick="selectOpponent('luna')" id="card-luna" class="opp-card border-2 border-stone-400 bg-white rounded-lg p-2.5 text-center transition transform hover:scale-105 flex flex-col items-center">
+                        <div class="text-3xl mb-1">🐈‍⬛</div>
+                        <div class="font-pixel text-[10px] text-stone-900">LUNA</div>
+                        <span class="text-[11px] bg-amber-600 text-white px-2 py-0.2 rounded font-bold mt-1">NORMAL</span>
+                        <p class="text-xs text-stone-600 mt-1 leading-tight">Gata Tuxedo en traje. Buenos reflejos.</p>
+                    </button>
+
+                    <!-- Jefe Whiskers -->
+                    <button onclick="selectOpponent('boss')" id="card-boss" class="opp-card border-2 border-stone-400 bg-white rounded-lg p-2.5 text-center transition transform hover:scale-105 flex flex-col items-center">
+                        <div class="text-3xl mb-1">🦁</div>
+                        <div class="font-pixel text-[10px] text-stone-900">JEFE WHISKERS</div>
+                        <span class="text-[11px] bg-red-600 text-white px-2 py-0.2 rounded font-bold mt-1">DIFÍCIL</span>
+                        <p class="text-xs text-stone-600 mt-1 leading-tight">Director del estudio. ¡Hace remates!</p>
+                    </button>
+                </div>
+
+                <!-- Opción de Skin de Paleta -->
+                <div class="bg-stone-200 border-2 border-stone-400 rounded-lg p-2.5 flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <span class="text-xl">🐾</span>
+                        <div>
+                            <div class="font-pixel text-[9px] text-stone-800">ESTILO DE PALETA</div>
+                            <div class="text-xs text-stone-600">Elige paleta clásica o con orejitas de gato</div>
+                        </div>
+                    </div>
+                    <button onclick="togglePaddleSkin()" id="btn-skin" class="px-3 py-1.5 bg-stone-800 text-amber-300 font-pixel text-[9px] rounded border-2 border-stone-950 hover:bg-stone-700">
+                        🐱 PALETA GATO: SÍ
+                    </button>
+                </div>
+
+                <!-- Botón Iniciar -->
+                <button onclick="startMatch()" class="w-full py-3 bg-emerald-600 hover:bg-emerald-500 active:translate-y-0.5 text-white font-pixel text-xs sm:text-sm rounded-lg border-4 border-stone-900 shadow-md transition">
+                    🏓 ¡EMPEZAR PARTIDO!
+                </button>
+            </div>
+        </div>
+
+        <!-- PANTALLA 2: RESUMEN DE FIN DE PARTIDO -->
+        <div id="screen-gameover" class="hidden absolute inset-0 bg-stone-950/85 backdrop-blur-sm z-30 flex flex-col items-center justify-center p-4">
+            <div class="bg-[#f3ead8] text-stone-900 border-4 border-stone-800 rounded-xl p-5 max-w-md w-full text-center shadow-2xl space-y-4">
+                <div class="text-4xl" id="end-trophy">🏆</div>
+                <h2 class="font-pixel text-sm sm:text-base text-stone-900" id="end-title">¡VICTORIA DE CODE CAT!</h2>
+                <p class="text-sm text-stone-700 font-bold" id="end-subtitle">¡Le ganaste a Milo en un gran partido!</p>
+
+                <!-- Recompensas de Necesidades estilo Los Sims -->
+                <div class="bg-stone-900 text-slate-100 border-2 border-stone-700 rounded-lg p-3 space-y-2">
+                    <div class="font-pixel text-[9px] text-amber-400">ESTADÍSTICAS RECUPERADAS</div>
+                    <div class="flex justify-around items-center pt-1">
+                        <div class="bg-purple-950 border border-purple-500 px-3 py-1.5 rounded">
+                            <div class="font-pixel text-xs text-purple-300">+40</div>
+                            <div class="text-xs text-purple-200">🎮 Diversión</div>
+                        </div>
+                        <div class="bg-emerald-950 border border-emerald-500 px-3 py-1.5 rounded">
+                            <div class="font-pixel text-xs text-emerald-300">+15</div>
+                            <div class="text-xs text-emerald-200">💬 Batería Social</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex flex-col sm:flex-row gap-2 pt-1">
+                    <button onclick="resetToSelect()" class="flex-1 py-2.5 bg-amber-500 hover:bg-amber-400 text-stone-950 font-pixel text-[10px] rounded-lg border-2 border-stone-900 font-bold">
+                        🔄 VOLVER A JUGAR
+                    </button>
+                    <button onclick="toggleIframeModal()" class="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-pixel text-[10px] rounded-lg border-2 border-stone-900">
+                        🔗 iFrame Construct 3
+                    </button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- BARRA INFERIOR DE CONTROLES E INTEGRACIÓN -->
+    <footer class="w-full max-w-4xl bg-stone-800 border-4 border-stone-950 rounded-lg px-3 py-2 flex flex-wrap items-center justify-between gap-2 z-20">
+        <div class="flex flex-wrap items-center gap-3 text-xs sm:text-sm text-stone-300">
+            <span><strong class="text-amber-400 font-pixel text-[9px]">MOVER:</strong> Ratón / Táctil / W-S / ↑-↓</span>
+            <span><strong class="text-red-400 font-pixel text-[9px]">REMATE (SMASH):</strong> Clic o Espacio</span>
+        </div>
+
+        <div class="flex items-center gap-2">
+            <button onclick="triggerSmash()" class="px-3 py-1 bg-red-600 active:bg-red-500 text-white font-pixel text-[9px] rounded border-2 border-stone-950 shadow">
+                💥 REMATE
+            </button>
+            <button onclick="toggleIframeModal()" class="px-2.5 py-1 bg-indigo-900 hover:bg-indigo-800 text-indigo-200 font-pixel text-[9px] rounded border-2 border-indigo-400">
+                🔗 iFrame Construct 3
+            </button>
+        </div>
+    </footer>
+
+    <!-- MODAL DE AYUDA PARA CONSTRUCT 3 / GITHUB PAGES -->
+    <div id="modal-iframe" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+        <div class="bg-[#f3ead8] text-stone-900 border-4 border-stone-800 rounded-xl p-5 max-w-lg w-full space-y-3 shadow-2xl">
+            <div class="flex justify-between items-center border-b-2 border-stone-400 pb-2">
+                <h3 class="font-pixel text-xs text-stone-900">🔗 INTEGRAR EN CONSTRUCT 3</h3>
+                <button onclick="toggleIframeModal()" class="font-pixel text-xs text-red-600">✖</button>
+            </div>
+            <p class="text-sm text-stone-700 leading-snug">
+                1. Sube este archivo <b>ping_pong.html</b> a tu repositorio de GitHub y activa <b>GitHub Pages</b>.<br>
+                2. En tu escena de <b>Sala de Juegos</b> en Construct 3, añade el objeto <b>HTML Element / iFrame</b> y pega tu enlace o este código:
+            </p>
+            <textarea id="iframe-code" readonly class="w-full h-20 bg-stone-900 text-emerald-400 font-mono text-xs p-2 rounded border-2 border-stone-700"><iframe src="https://TU-USUARIO.github.io/TU-REPO/ping_pong.html" width="800" height="500" frameborder="0"></iframe></textarea>
+            <div class="flex gap-2">
+                <button onclick="copyIframeCode()" id="btn-copy" class="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-pixel text-[10px] rounded border-2 border-stone-900">
+                    📋 COPIAR CÓDIGO
+                </button>
+                <button onclick="toggleIframeModal()" class="px-4 py-2 bg-stone-800 text-white font-pixel text-[10px] rounded border-2 border-stone-900">
+                    CERRAR
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('pongCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Estado de configuración y juego
+        let gameState = 'select'; // 'select', 'playing', 'gameover'
+        let selectedOppKey = 'milo';
+        let catPaddleSkin = true;
+        let audioEnabled = true;
+        const WIN_SCORE = 7;
+
+        // Definición de compañeros de Night Cat Productions
+        const opponents = {
+            milo: {
+                name: 'MILO',
+                icon: '🐈',
+                aiSpeed: 3.1,
+                reactionError: 28,
+                smashChance: 0.1,
+                furColor: '#f59e0b',
+                patchColor: '#1e293b',
+                outfitColor: '#64748b', // Chaleco gris
+                phrases: ['¡Buen tiro!', '¡Miau!', '¡Casi la alcanzo!', '¿Un café luego?', '¡Ups!']
+            },
+            luna: {
+                name: 'LUNA',
+                icon: '🐈‍⬛',
+                aiSpeed: 4.5,
+                reactionError: 14,
+                smashChance: 0.3,
+                furColor: '#1e293b',
+                patchColor: '#f8fafc',
+                outfitColor: '#14532d', // Traje verde oscuro
+                phrases: ['¡Nada mal!', '¡Miau táctico!', '¡Concentración!', '¡Buen reflejo!', '¡Toma esa!']
+            },
+            boss: {
+                name: 'JEFE WHISKERS',
+                icon: '🦁',
+                aiSpeed: 6.0,
+                reactionError: 5,
+                smashChance: 0.65,
+                furColor: '#d97706',
+                patchColor: '#fef3c7',
+                outfitColor: '#7f1d1d', // Traje ejecutivo rojo oscuro
+                phrases: ['¡A trabajar!', '¡Nivel CEO!', '¡Más rápido!', '¡Excelente entrega!', '¡Imparable!']
+            }
+        };
+
+        // Entidades del juego (coordenadas lógicas internas 800x480)
+        const W = 800;
+        const H = 480;
+
+        let p1 = { x: 115, y: H / 2, w: 14, h: 64, score: 0, smashTimer: 0, swingAnim: 0, bubble: '', bubbleTimer: 0 };
+        let p2 = { x: W - 115, y: H / 2, w: 14, h: 64, score: 0, smashTimer: 0, swingAnim: 0, bubble: '', bubbleTimer: 0, targetY: H / 2 };
+        let ball = { x: W / 2, y: H / 2, vx: 5, vy: 2, r: 7, isSmash: false, trail: [] };
+        let particles = [];
+
+        // Controles
+        let keys = { up: false, down: false };
+
+        // Redimensionar canvas manteniendo nitidez pixel-art
+        function resizeCanvas() {
+            canvas.width = W;
+            canvas.height = H;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // --- SINTETIZADOR DE SONIDO RETRO (WEB AUDIO API) ---
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        let audioCtx = null;
+
+        function initAudio() {
+            if (!audioCtx) audioCtx = new AudioContext();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
+        function playSound(type) {
+            if (!audioEnabled) return;
+            initAudio();
+            const now = audioCtx.currentTime;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            if (type === 'paddle') {
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(520, now);
+                osc.frequency.exponentialRampToValueAtTime(680, now + 0.06);
+                gain.gain.setValueAtTime(0.08, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+                osc.start(now);
+                osc.stop(now + 0.06);
+            } else if (type === 'smash') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(240, now);
+                osc.frequency.exponentialRampToValueAtTime(880, now + 0.14);
+                gain.gain.setValueAtTime(0.14, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+                osc.start(now);
+                osc.stop(now + 0.14);
+            } else if (type === 'wall') {
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(320, now);
+                gain.gain.setValueAtTime(0.07, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+                osc.start(now);
+                osc.stop(now + 0.05);
+            } else if (type === 'point') {
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(587.33, now); // D5
+                osc.frequency.setValueAtTime(880, now + 0.09); // A5
+                gain.gain.setValueAtTime(0.09, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+                osc.start(now);
+                osc.stop(now + 0.25);
+            } else if (type === 'win') {
+                const notes = [523.25, 659.25, 783.99, 1046.50];
+                notes.forEach((freq, idx) => {
+                    const o = audioCtx.createOscillator();
+                    const g = audioCtx.createGain();
+                    o.type = 'square';
+                    o.frequency.setValueAtTime(freq, now + idx * 0.1);
+                    g.gain.setValueAtTime(0.09, now + idx * 0.1);
+                    g.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.1 + 0.25);
+                    o.connect(g);
+                    g.connect(audioCtx.destination);
+                    o.start(now + idx * 0.1);
+                    o.stop(now + idx * 0.1 + 0.25);
+                });
+            }
+        }
+
+        function toggleAudio() {
+            audioEnabled = !audioEnabled;
+            document.getElementById('btn-sfx').innerText = audioEnabled ? '🔊' : '🔇';
+        }
+
+        // --- INTERFAZ Y SELECCIÓN ---
+        function selectOpponent(key) {
+            selectedOppKey = key;
+            document.querySelectorAll('.opp-card').forEach(el => {
+                el.classList.remove('border-4', 'border-amber-600', 'bg-amber-100');
+                el.classList.add('border-2', 'border-stone-400', 'bg-white');
+            });
+            const activeCard = document.getElementById('card-' + key);
+            activeCard.classList.remove('border-2', 'border-stone-400', 'bg-white');
+            activeCard.classList.add('border-4', 'border-amber-600', 'bg-amber-100');
+            playSound('paddle');
+        }
+
+        function togglePaddleSkin() {
+            catPaddleSkin = !catPaddleSkin;
+            document.getElementById('btn-skin').innerText = catPaddleSkin ? '🐱 PALETA GATO: SÍ' : '🏓 PALETA CLÁSICA';
+            playSound('wall');
+        }
+
+        function startMatch() {
+            initAudio();
+            const opp = opponents[selectedOppKey];
+            document.getElementById('ai-name-hud').innerText = opp.name;
+            document.getElementById('ai-icon-hud').innerText = opp.icon;
+
+            p1.score = 0;
+            p2.score = 0;
+            updateScoreboard();
+
+            document.getElementById('screen-select').classList.add('hidden');
+            document.getElementById('screen-gameover').classList.add('hidden');
+            gameState = 'playing';
+
+            showBubble(p1, '¡Listo!');
+            showBubble(p2, '¡A jugar!');
+            resetBall(1);
+            playSound('point');
+        }
+
+        function resetToSelect() {
+            document.getElementById('screen-gameover').classList.add('hidden');
+            document.getElementById('screen-select').classList.remove('hidden');
+            gameState = 'select';
+        }
+
+        function updateScoreboard() {
+            document.getElementById('score-p1').innerText = p1.score;
+            document.getElementById('score-p2').innerText = p2.score;
+        }
+
+        function showBubble(player, text) {
+            player.bubble = text;
+            player.bubbleTimer = 110; // frames
+        }
+
+        // --- CONTROLES DE JUGADOR (RATÓN, TÁCTIL Y TECLADO) ---
+        function updatePlayerPositionFromClientY(clientY) {
+            if (gameState !== 'playing') return;
+            const rect = canvas.getBoundingClientRect();
+            const scaleY = H / rect.height;
+            const targetY = (clientY - rect.top) * scaleY;
+            p1.y = Math.max(85, Math.min(H - 85, targetY));
+        }
+
+        canvas.addEventListener('mousemove', e => updatePlayerPositionFromClientY(e.clientY));
+        canvas.addEventListener('touchmove', e => {
+            e.preventDefault();
+            if (e.touches.length > 0) updatePlayerPositionFromClientY(e.touches[0].clientY);
+        }, { passive: false });
+
+        canvas.addEventListener('mousedown', () => triggerSmash());
+        canvas.addEventListener('touchstart', e => {
+            if (e.touches.length > 0) updatePlayerPositionFromClientY(e.touches[0].clientY);
+            triggerSmash();
+        }, { passive: true });
+
+        window.addEventListener('keydown', e => {
+            if (['ArrowUp', 'w', 'W'].includes(e.key)) keys.up = true;
+            if (['ArrowDown', 's', 'S'].includes(e.key)) keys.down = true;
+            if (e.key === ' ') {
+                e.preventDefault();
+                triggerSmash();
+            }
+        });
+
+        window.addEventListener('keyup', e => {
+            if (['ArrowUp', 'w', 'W'].includes(e.key)) keys.up = false;
+            if (['ArrowDown', 's', 'S'].includes(e.key)) keys.down = false;
+        });
+
+        function triggerSmash() {
+            if (gameState !== 'playing') return;
+            if (p1.smashTimer <= 0) {
+                p1.smashTimer = 18; // Ventana activa de remate
+                p1.swingAnim = 12;
+                playSound('wall');
+            }
+        }
+
+        // --- LÓGICA DEL PARTIDO Y FÍSICAS ---
+        function resetBall(direction) {
+            ball.x = W / 2;
+            ball.y = H / 2;
+            ball.isSmash = false;
+            ball.trail = [];
+            const speed = 5.4;
+            const angle = (Math.random() * 0.6 - 0.3);
+            ball.vx = direction * speed * Math.cos(angle);
+            ball.vy = speed * Math.sin(angle);
+        }
+
+        function spawnParticles(x, y, color, count = 10) {
+            for (let i = 0; i < count; i++) {
+                particles.push({
+                    x, y,
+                    vx: (Math.random() - 0.5) * 6,
+                    vy: (Math.random() - 0.5) * 6,
+                    life: 20 + Math.random() * 10,
+                    color
+                });
+            }
+        }
+
+        function update() {
+            if (gameState !== 'playing') return;
+
+            // Movimiento teclado Jugador 1
+            if (keys.up) p1.y = Math.max(85, p1.y - 6.5);
+            if (keys.down) p1.y = Math.min(H - 85, p1.y + 6.5);
+
+            if (p1.smashTimer > 0) p1.smashTimer--;
+            if (p1.swingAnim > 0) p1.swingAnim--;
+            if (p2.swingAnim > 0) p2.swingAnim--;
+            if (p1.bubbleTimer > 0) p1.bubbleTimer--;
+            if (p2.bubbleTimer > 0) p2.bubbleTimer--;
+
+            // IA del compañero de trabajo
+            const opp = opponents[selectedOppKey];
+            if (ball.vx > 0) {
+                // La pelota va hacia el compañero
+                const errorOffset = Math.sin(Date.now() / 220) * opp.reactionError;
+                p2.targetY = ball.y + errorOffset;
+            } else {
+                // Regresa suavemente al centro
+                p2.targetY = H / 2;
+            }
+
+            const diffY = p2.targetY - p2.y;
+            if (Math.abs(diffY) > 4) {
+                p2.y += Math.sign(diffY) * Math.min(Math.abs(diffY), opp.aiSpeed);
+            }
+            p2.y = Math.max(85, Math.min(H - 85, p2.y));
+
+            // Guardar estela de pelota
+            ball.trail.push({ x: ball.x, y: ball.y, smash: ball.isSmash });
+            if (ball.trail.length > 8) ball.trail.shift();
+
+            // Mover pelota
+            ball.x += ball.vx;
+            ball.y += ball.vy;
+
+            // Rebote bordes superior e inferior de la mesa (líneas blancas y = 60 y y = H - 60)
+            const tableTop = 62;
+            const tableBottom = H - 62;
+
+            if (ball.y - ball.r < tableTop) {
+                ball.y = tableTop + ball.r;
+                ball.vy = Math.abs(ball.vy);
+                playSound('wall');
+            } else if (ball.y + ball.r > tableBottom) {
+                ball.y = tableBottom - ball.r;
+                ball.vy = -Math.abs(ball.vy);
+                playSound('wall');
+            }
+
+            // Colisión con Paleta Jugador 1 (Izquierda)
+            if (
+                ball.vx < 0 &&
+                ball.x - ball.r <= p1.x + p1.w &&
+                ball.x + ball.r >= p1.x - 10 &&
+                Math.abs(ball.y - p1.y) <= p1.h / 2 + ball.r
+            ) {
+                const hitFactor = (ball.y - p1.y) / (p1.h / 2);
+                const isSmashHit = p1.smashTimer > 0;
+                ball.isSmash = isSmashHit;
+
+                const baseSpeed = Math.min(11.5, Math.hypot(ball.vx, ball.vy) + 0.35);
+                const finalSpeed = isSmashHit ? Math.min(13.5, baseSpeed * 1.32) : baseSpeed;
+                const bounceAngle = hitFactor * (Math.PI / 4);
+
+                ball.vx = Math.cos(bounceAngle) * finalSpeed;
+                ball.vy = Math.sin(bounceAngle) * finalSpeed;
+                ball.x = p1.x + p1.w + ball.r;
+                p1.swingAnim = 10;
+
+                if (isSmashHit) {
+                    playSound('smash');
+                    spawnParticles(ball.x, ball.y, '#ef4444', 16);
+                    showBubble(p1, '¡REMATE MIAU! 💥');
+                } else {
+                    playSound('paddle');
+                    spawnParticles(ball.x, ball.y, '#ffffff', 6);
+                }
+            }
+
+            // Colisión con Paleta Rival IA (Derecha)
+            if (
+                ball.vx > 0 &&
+                ball.x + ball.r >= p2.x - p2.w &&
+                ball.x - ball.r <= p2.x + 10 &&
+                Math.abs(ball.y - p2.y) <= p2.h / 2 + ball.r
+            ) {
+                const hitFactor = (ball.y - p2.y) / (p2.h / 2);
+                const aiSmash = Math.random() < opp.smashChance;
+                ball.isSmash = aiSmash;
+
+                const baseSpeed = Math.min(11.5, Math.hypot(ball.vx, ball.vy) + 0.3);
+                const finalSpeed = aiSmash ? Math.min(13.0, baseSpeed * 1.25) : baseSpeed;
+                const bounceAngle = hitFactor * (Math.PI / 4);
+
+                ball.vx = -Math.cos(bounceAngle) * finalSpeed;
+                ball.vy = Math.sin(bounceAngle) * finalSpeed;
+                ball.x = p2.x - p2.w - ball.r;
+                p2.swingAnim = 10;
+
+                if (aiSmash) {
+                    playSound('smash');
+                    spawnParticles(ball.x, ball.y, '#38bdf8', 14);
+                    showBubble(p2, '¡Toma esto! ⚡');
+                } else {
+                    playSound('paddle');
+                    spawnParticles(ball.x, ball.y, '#ffffff', 6);
+                }
+            }
+
+            // Puntos anotados
+            if (ball.x < 70) {
+                // Punto para el compañero
+                p2.score++;
+                updateScoreboard();
+                playSound('point');
+                spawnParticles(90, ball.y, '#3b82f6', 20);
+                const randomPhrase = opp.phrases[Math.floor(Math.random() * opp.phrases.length)];
+                showBubble(p2, randomPhrase);
+                checkWinOrContinue(-1);
+            } else if (ball.x > W - 70) {
+                // Punto para Code Cat (Jugador)
+                p1.score++;
+                updateScoreboard();
+                playSound('point');
+                spawnParticles(W - 90, ball.y, '#ef4444', 20);
+                const p1Phrases = ['¡Punto limpio!', '¡Miau!', '¡Buen tiro!', '¡Sí!'];
+                showBubble(p1, p1Phrases[Math.floor(Math.random() * p1Phrases.length)]);
+                showBubble(p2, '¡Casi!');
+                checkWinOrContinue(1);
+            }
+
+            // Actualizar partículas
+            particles.forEach((pt, idx) => {
+                pt.x += pt.vx;
+                pt.y += pt.vy;
+                pt.life--;
+                if (pt.life <= 0) particles.splice(idx, 1);
+            });
+        }
+
+        function checkWinOrContinue(nextDir) {
+            if (p1.score >= WIN_SCORE || p2.score >= WIN_SCORE) {
+                gameState = 'gameover';
+                playSound('win');
+                const opp = opponents[selectedOppKey];
+                const playerWon = p1.score >= WIN_SCORE;
+
+                document.getElementById('end-trophy').innerText = playerWon ? '🏆' : '🐱';
+                document.getElementById('end-title').innerText = playerWon ? '¡VICTORIA DE CODE CAT!' : `¡GANÓ ${opp.name}!`;
+                document.getElementById('end-subtitle').innerText = playerWon
+                    ? `¡Derrotaste a ${opp.name} (${p1.score} - ${p2.score}) en la Sala de Juegos!`
+                    : `Buen partido contra ${opp.name} (${p1.score} - ${p2.score}). ¡Sigue practicando!`;
+
+                document.getElementById('screen-gameover').classList.remove('hidden');
+            } else {
+                resetBall(nextDir);
+            }
+        }
+
+        // --- DIBUJO PIXEL-ART DEL ESCENARIO SALA DE JUEGOS ---
+        function drawFloorAndBeanbags() {
+            // Suelo de baldosas crema de la Sala de Juegos
+            const tileSize = 40;
+            for (let x = 0; x < W; x += tileSize) {
+                for (let y = 0; y < H; y += tileSize) {
+                    ctx.fillStyle = ((x / tileSize + y / tileSize) % 2 === 0) ? '#efe7d6' : '#e6dcc6';
+                    ctx.fillRect(x, y, tileSize, tileSize);
+                    ctx.strokeStyle = '#d6c9b0';
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(x, y, tileSize, tileSize);
+                }
+            }
+
+            // 4 Pufs (Beanbags) marrones en las esquinas como en la imagen
+            const beanbags = [
+                { x: 48, y: 46 },
+                { x: W - 48, y: 46 },
+                { x: 48, y: H - 46 },
+                { x: W - 48, y: H - 46 }
+            ];
+
+            beanbags.forEach(b => {
+                // Sombra
+                ctx.fillStyle = 'rgba(0,0,0,0.22)';
+                ctx.beginPath();
+                ctx.ellipse(b.x + 3, b.y + 5, 32, 24, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Cuerpo del puf marrón
+                ctx.fillStyle = '#9c6b43';
+                ctx.strokeStyle = '#291d14';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.ellipse(b.x, b.y, 30, 22, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+
+                // Pliegue interior
+                ctx.strokeStyle = '#734b2c';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, 12, 0.2, Math.PI - 0.2);
+                ctx.stroke();
+            });
+        }
+
+        function drawPingPongTable() {
+            const tx = 95;
+            const ty = 54;
+            const tw = W - 190;
+            const th = H - 108;
+
+            // Sombra de la mesa en el suelo
+            ctx.fillStyle = 'rgba(20, 15, 10, 0.35)';
+            ctx.fillRect(tx + 8, ty + 12, tw, th);
+
+            // Borde exterior oscuro pixel-art
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(tx - 4, ty - 4, tw + 8, th + 8);
+
+            // Superficie verde de Ping-Pong
+            ctx.fillStyle = '#2d7a53';
+            ctx.fillRect(tx, ty, tw, th);
+
+            // Líneas blancas reglamentarias
+            ctx.strokeStyle = '#f8fafc';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(tx + 6, ty + 6, tw - 12, th - 12);
+
+            // Línea central horizontal
+            ctx.beginPath();
+            ctx.moveTo(tx + 6, H / 2);
+            ctx.lineTo(tx + tw - 6, H / 2);
+            ctx.stroke();
+
+            // Red central vertical pixel-art
+            const netX = W / 2;
+            ctx.fillStyle = 'rgba(0,0,0,0.3)';
+            ctx.fillRect(netX - 2, ty - 6, 8, th + 12);
+
+            // Malla de la red
+            ctx.fillStyle = '#cbd5e1';
+            for (let ny = ty - 4; ny < ty + th + 4; ny += 6) {
+                ctx.fillRect(netX - 2, ny, 4, 3);
+            }
+            // Postes de la red
+            ctx.fillStyle = '#334155';
+            ctx.fillRect(netX - 5, ty - 10, 10, 10);
+            ctx.fillRect(netX - 5, ty + th, 10, 10);
+        }
+
+        function drawCatAvatar(x, y, isLeft, config) {
+            ctx.save();
+            ctx.translate(x, y);
+
+            // Sombra en el piso
+            ctx.fillStyle = 'rgba(0,0,0,0.28)';
+            ctx.beginPath();
+            ctx.ellipse(0, 22, 18, 7, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Cola animada
+            const tailWag = Math.sin(Date.now() / 160) * 4;
+            ctx.strokeStyle = config.furColor;
+            ctx.lineWidth = 5;
+            ctx.beginPath();
+            ctx.moveTo(isLeft ? -10 : 10, 10);
+            ctx.quadraticCurveTo(isLeft ? -24 : 24, 5 + tailWag, isLeft ? -22 : 22, -6 + tailWag);
+            ctx.stroke();
+
+            // Cuerpo / Ropa (Sudadera oscura para Code Cat, o traje para compañero)
+            ctx.fillStyle = config.outfitColor;
+            ctx.strokeStyle = '#1c1917';
+            ctx.lineWidth = 2.5;
+            ctx.fillRect(-13, -4, 26, 22);
+            ctx.strokeRect(-13, -4, 26, 22);
+
+            // Cabeza de gato pixel-art
+            ctx.fillStyle = config.furColor;
+            ctx.fillRect(-15, -26, 30, 24);
+            ctx.strokeRect(-15, -26, 30, 24);
+
+            // Orejas triangulares
+            ctx.beginPath();
+            ctx.moveTo(-15, -26); ctx.lineTo(-15, -35); ctx.lineTo(-6, -26);
+            ctx.moveTo(15, -26); ctx.lineTo(15, -35); ctx.lineTo(6, -26);
+            ctx.fill();
+            ctx.stroke();
+
+            // Mancha en rostro (si es Calicó o Tuxedo)
+            if (config.patchColor) {
+                ctx.fillStyle = config.patchColor;
+                ctx.fillRect(isLeft ? 2 : -13, -24, 11, 10);
+            }
+
+            // Ojos mirando a la mesa
+            const eyeOffset = isLeft ? 4 : -4;
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(-7 + eyeOffset, -16, 3, 4);
+            ctx.fillRect(4 + eyeOffset, -16, 3, 4);
+
+            // Hocico rosado
+            ctx.fillStyle = '#fda4af';
+            ctx.fillRect(-2 + eyeOffset, -11, 4, 3);
+
+            ctx.restore();
+        }
+
+        function drawPaddle(player, isLeft, color) {
+            ctx.save();
+            const swingOffset = isLeft ? player.swingAnim * 0.8 : -player.swingAnim * 0.8;
+            ctx.translate(player.x + swingOffset, player.y);
+
+            // Aura de Smash activo en Jugador 1
+            if (isLeft && player.smashTimer > 0) {
+                ctx.strokeStyle = '#fef08a';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.arc(0, 0, 36, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+
+            // Mango de madera
+            ctx.fillStyle = '#b45309';
+            ctx.strokeStyle = '#1c1917';
+            ctx.lineWidth = 2;
+            const handleX = isLeft ? -16 : 6;
+            ctx.fillRect(handleX, -4, 10, 8);
+            ctx.strokeRect(handleX, -4, 10, 8);
+
+            // Cabeza de la paleta
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, 10, player.h / 2, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            // Orejitas de gato opcionales en la paleta (como en el sprite de la sala de juegos)
+            if (catPaddleSkin) {
+                ctx.beginPath();
+                ctx.moveTo(-4, -player.h / 2 + 4);
+                ctx.lineTo(-8, -player.h / 2 - 6);
+                ctx.lineTo(2, -player.h / 2 + 1);
+                ctx.fill();
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.moveTo(-4, player.h / 2 - 4);
+                ctx.lineTo(-8, player.h / 2 + 6);
+                ctx.lineTo(2, player.h / 2 - 1);
+                ctx.fill();
+                ctx.stroke();
+            }
+
+            ctx.restore();
+        }
+
+        function drawSpeechBubble(x, y, text) {
+            ctx.save();
+            ctx.font = 'bold 11px "Press Start 2P", monospace';
+            const textWidth = ctx.measureText(text).width;
+            const bw = textWidth + 16;
+            const bh = 24;
+            const bx = Math.max(10, Math.min(W - bw - 10, x - bw / 2));
+            const by = y - 62;
+
+            // Caja blanca pixel
+            ctx.fillStyle = '#ffffff';
+            ctx.strokeStyle = '#1c1917';
+            ctx.lineWidth = 2.5;
+            ctx.fillRect(bx, by, bw, bh);
+            ctx.strokeRect(bx, by, bw, bh);
+
+            // Triángulo inferior del globo
+            ctx.beginPath();
+            ctx.moveTo(x - 5, by + bh);
+            ctx.lineTo(x, by + bh + 6);
+            ctx.lineTo(x + 5, by + bh);
+            ctx.fill();
+            ctx.stroke();
+
+            // Texto
+            ctx.fillStyle = '#1c1917';
+            ctx.textAlign = 'center';
+            ctx.fillText(text, bx + bw / 2, by + 16);
+            ctx.restore();
+        }
+
+        function drawBall() {
+            // Estela de movimiento
+            ball.trail.forEach((t, i) => {
+                const alpha = (i + 1) / ball.trail.length * 0.45;
+                ctx.fillStyle = t.smash ? `rgba(239, 68, 68, ${alpha})` : `rgba(255, 255, 255, ${alpha})`;
+                ctx.beginPath();
+                ctx.arc(t.x, t.y, ball.r * (0.6 + i * 0.05), 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // Sombra en la mesa
+            ctx.fillStyle = 'rgba(0,0,0,0.25)';
+            ctx.beginPath();
+            ctx.arc(ball.x + 4, ball.y + 6, ball.r, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Pelota
+            ctx.fillStyle = ball.isSmash ? '#fde047' : '#ffffff';
+            ctx.strokeStyle = '#1c1917';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, W, H);
+
+            // 1. Suelo y pufs
+            drawFloorAndBeanbags();
+
+            // 2. Mesa verde de Ping-Pong
+            drawPingPongTable();
+
+            // 3. Avatares de gatos a cada lado de la mesa
+            const p1Config = {
+                furColor: '#ea580c', // Gato atigrado naranja (Code Cat)
+                patchColor: null,
+                outfitColor: '#334155' // Sudadera oscura
+            };
+            drawCatAvatar(58, p1.y, true, p1Config);
+
+            const oppConfig = opponents[selectedOppKey];
+            drawCatAvatar(W - 58, p2.y, false, oppConfig);
+
+            // 4. Paletas
+            drawPaddle(p1, true, '#ef4444');  // Paleta roja
+            drawPaddle(p2, false, '#3b82f6'); // Paleta azul
+
+            // 5. Pelota y Partículas
+            if (gameState === 'playing') {
+                drawBall();
+            }
+
+            particles.forEach(pt => {
+                ctx.fillStyle = pt.color;
+                ctx.fillRect(pt.x - 2, pt.y - 2, 4, 4);
+            });
+
+            // 6. Globos de diálogo pixel-art
+            if (p1.bubbleTimer > 0) drawSpeechBubble(62, p1.y, p1.bubble);
+            if (p2.bubbleTimer > 0) drawSpeechBubble(W - 62, p2.y, p2.bubble);
+        }
+
+        function loop() {
+            update();
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        // Utilidades Modal iFrame
+        function toggleIframeModal() {
+            document.getElementById('modal-iframe').classList.toggle('hidden');
+        }
+
+        function copyIframeCode() {
+            const textarea = document.getElementById('iframe-code');
+            textarea.select();
+            document.execCommand('copy');
+            const btn = document.getElementById('btn-copy');
+            btn.innerText = '✅ ¡COPIADO!';
+            setTimeout(() => { btn.innerText = '📋 COPIAR CÓDIGO'; }, 2000);
+        }
+
+        // Iniciar bucle visual
+        loop();
+    </script>
+</body>
+</html>
